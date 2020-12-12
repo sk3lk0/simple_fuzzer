@@ -1,35 +1,50 @@
 import os
+import shutil
 import subprocess
 import time
+from datetime import datetime
 
 
 def create_new():
-    with open('mysession.nps', "wb") as f:
+    with open(trash, "wb") as f:
         data = os.urandom(4096)
         f.write(data)
     return data
 
-def execute_fuzz(data, counter):
-    process = subprocess.Popen(["programm", "arg","arg2"], shell=False, stdout=subprocess.PIPE)
-    print('process created')
-    time.sleep(0.5)
-    crash = process.poll()
-    if not crash:
-        print('no crash')
-        try:
-            process.terminate()
-        except OSError:
-            pass
-    else:
-        print('crash')
-        with open("crashes/crash.{}.txt".format(counter), "wb+") as f:
-                    f.write(data)
-        process.wait()
+
+cdb = "cdb.exe"  # cdb
+program = "program"
+crashdir = "C:\\"
+trash = "trash"
+
+def startapp(trash):
+    print()
+    cmd = cdb + ' ' + '-c ".logopen ' + crashdir + 'temp.log;g;.logclose ' + crashdir + 'temp.log" ' + program + ' ' + trash
+    process = subprocess.Popen(cmd)
+    return process
 
 
-counter = 0
-while counter < 100000:
-    print(f'try: {counter}')
-    data = create_new()
-    execute_fuzz(data, counter)
-    counter += 1
+def kill(proc_obj):
+    proc_obj.terminate()
+
+
+def wascrash():
+    log = open(crashdir + 'temp.log').read()
+    if "Access violation - code" in log:
+        return True
+
+
+def dumpcrash(crash_filename):
+    prog = program.split('\\')[-1:][0]
+    shutil.copyfile(crash_filename, crashdir + prog + '_' + datetime.now().strftime("%y-%m-%d-%H:%M:%S") + '_Crash' + ".txt")
+
+
+fuzz = (program, crashdir, cdb)  # Initialize the fuzzer
+while True:
+    create_new()
+    proc = startapp(trash)
+    time.sleep(2)  # Run the prog for 2 seconds
+    kill(proc)  # Kill() => Kill the prog. process
+    if wascrash() == True:  # wascrash() return True if the prog. crashed last time
+        print("Crashed")
+        dumpcrash(trash) # Will copy the test case causing the crash to log folder "crashdir"
